@@ -1,0 +1,13 @@
+# Prompts (excluded from repo)
+prompt*
+
+# Binary (at root only)
+/trak
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
