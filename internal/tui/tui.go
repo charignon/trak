@@ -23,6 +23,7 @@ const (
 	ViewMain View = iota
 	ViewRemoteBrowser
 	ViewNewTrack
+	ViewDeleteConfirm
 )
 
 // Model is the main bubbletea model for trak TUI.
@@ -46,22 +47,27 @@ type Model struct {
 	quitting       bool
 	// New track input
 	textInput textinput.Model
+	// Delete confirmation
+	pendingDeleteBranch string
 }
 
 // KeyMap defines the keybindings for the TUI.
 type KeyMap struct {
-	Up      key.Binding
-	Down    key.Binding
-	Enter   key.Binding
-	Refresh key.Binding
-	Browse  key.Binding
-	New     key.Binding
-	Delete  key.Binding
-	Sync    key.Binding
-	AI      key.Binding
-	Back    key.Binding
-	Quit    key.Binding
-	Help    key.Binding
+	Up          key.Binding
+	Down        key.Binding
+	Enter       key.Binding
+	Refresh     key.Binding
+	Browse      key.Binding
+	New         key.Binding
+	Delete      key.Binding
+	ForceDelete key.Binding
+	Sync        key.Binding
+	AI          key.Binding
+	Back        key.Binding
+	Quit        key.Binding
+	Help        key.Binding
+	Yes         key.Binding
+	No          key.Binding
 }
 
 // DefaultKeyMap returns the default keybindings.
@@ -93,7 +99,11 @@ func DefaultKeyMap() KeyMap {
 		),
 		Delete: key.NewBinding(
 			key.WithKeys("d"),
-			key.WithHelp("d", "delete track"),
+			key.WithHelp("d", "delete (confirm)"),
+		),
+		ForceDelete: key.NewBinding(
+			key.WithKeys("D"),
+			key.WithHelp("D", "delete (no confirm)"),
 		),
 		Sync: key.NewBinding(
 			key.WithKeys("s"),
@@ -115,6 +125,14 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("?"),
 			key.WithHelp("?", "help"),
 		),
+		Yes: key.NewBinding(
+			key.WithKeys("y", "Y"),
+			key.WithHelp("y", "yes"),
+		),
+		No: key.NewBinding(
+			key.WithKeys("n", "N"),
+			key.WithHelp("n", "no"),
+		),
 	}
 }
 
@@ -128,7 +146,7 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Enter},
 		{k.Refresh, k.Browse, k.New},
-		{k.Sync, k.AI, k.Delete},
+		{k.Sync, k.AI, k.Delete, k.ForceDelete},
 		{k.Back, k.Quit, k.Help},
 	}
 }
@@ -351,6 +369,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.textInput.Blur()
 				return m, nil
 			}
+			if m.view == ViewDeleteConfirm {
+				m.view = ViewMain
+				m.pendingDeleteBranch = ""
+				return m, nil
+			}
 
 		case key.Matches(msg, m.keys.Refresh):
 			m.loading = true
@@ -415,9 +438,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				idx := m.table.Cursor()
 				if idx < len(m.tracks) {
 					branch := m.tracks[idx].Track.Branch
+					m.pendingDeleteBranch = branch
+					m.view = ViewDeleteConfirm
+					return m, nil
+				}
+			}
+
+		case key.Matches(msg, m.keys.ForceDelete):
+			if m.view == ViewMain && len(m.tracks) > 0 {
+				idx := m.table.Cursor()
+				if idx < len(m.tracks) {
+					branch := m.tracks[idx].Track.Branch
 					m.loading = true
 					return m, m.deleteTrack(branch)
 				}
+			}
+
+		case key.Matches(msg, m.keys.Yes):
+			if m.view == ViewDeleteConfirm && m.pendingDeleteBranch != "" {
+				branch := m.pendingDeleteBranch
+				m.pendingDeleteBranch = ""
+				m.view = ViewMain
+				m.loading = true
+				return m, m.deleteTrack(branch)
+			}
+
+		case key.Matches(msg, m.keys.No):
+			if m.view == ViewDeleteConfirm {
+				m.view = ViewMain
+				m.pendingDeleteBranch = ""
+				return m, nil
 			}
 
 		case key.Matches(msg, m.keys.AI):
@@ -519,6 +569,8 @@ func (m Model) View() string {
 		b.WriteString(m.renderRemoteBrowserView())
 	case ViewNewTrack:
 		b.WriteString(m.renderNewTrackView())
+	case ViewDeleteConfirm:
+		b.WriteString(m.renderDeleteConfirmView())
 	}
 
 	// Notification
@@ -569,6 +621,22 @@ func (m Model) renderNewTrackView() string {
 	b.WriteString("\n\n")
 	b.WriteString("  ")
 	b.WriteString(inputBoxStyle.Render(m.textInput.View()))
+	return b.String()
+}
+
+func (m Model) renderDeleteConfirmView() string {
+	var b strings.Builder
+	b.WriteString(errorStyle.Render("  Delete Track"))
+	b.WriteString("\n\n")
+	b.WriteString(normalStyle.Render(fmt.Sprintf("  Delete track '%s'?", m.pendingDeleteBranch)))
+	b.WriteString("\n\n")
+	b.WriteString(dimStyle.Render("  Press "))
+	b.WriteString(inputStyle.Render("y"))
+	b.WriteString(dimStyle.Render(" to confirm, "))
+	b.WriteString(inputStyle.Render("n"))
+	b.WriteString(dimStyle.Render(" or "))
+	b.WriteString(inputStyle.Render("Esc"))
+	b.WriteString(dimStyle.Render(" to cancel."))
 	return b.String()
 }
 
