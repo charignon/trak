@@ -83,9 +83,11 @@ func TestKeyMapFullHelp(t *testing.T) {
 		t.Errorf("expected 4 full help rows, got %d", len(help))
 	}
 
+	// Row sizes: {Up, Down, Enter}, {Refresh, Browse, New}, {Sync, AI, Delete, ForceDelete}, {Back, Quit, Help}
+	expectedSizes := []int{3, 3, 4, 3}
 	for i, row := range help {
-		if len(row) != 3 {
-			t.Errorf("expected 3 bindings in row %d, got %d", i, len(row))
+		if len(row) != expectedSizes[i] {
+			t.Errorf("expected %d bindings in row %d, got %d", expectedSizes[i], i, len(row))
 		}
 	}
 }
